@@ -1,11 +1,21 @@
+//! Event types and parsing for Discourse webhooks
+//!
+//! This module contains all the data structures that represent different
+//! webhook events from Discourse, along with functions to parse them.
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Represents a user in webhook payloads
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WebhookUser {
+    /// Template URL for the user's avatar
     pub avatar_template: String,
+    /// Unique user ID
     pub id: i32,
+    /// Optional display name
     pub name: Option<String>,
+    /// Username (unique identifier)
     pub username: String,
 }
 

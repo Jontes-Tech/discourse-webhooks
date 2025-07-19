@@ -5,8 +5,12 @@ edition = "2021"
 description = "Type-safe Rust library for handling Discourse webhook events"
 license = "MIT"
 repository = "https://github.com/Jontes-Tech/discourse-webhooks"
+homepage = "https://github.com/Jontes-Tech/discourse-webhooks"
+documentation = "https://docs.rs/discourse-webhooks"
 keywords = ["discourse", "webhook", "web", "api"]
 categories = ["web-programming", "api-bindings"]
+authors = ["Jonatan Holmgren <jonatan@jontes.page>"]
+readme = "README.md"
 
 [[example]]
 name = "basic"

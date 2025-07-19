@@ -1,3 +1,35 @@
+//! # Discourse Webhooks
+//!
+//! A type-safe Rust library for handling Discourse webhook events.
+//!
+//! This crate provides:
+//! - Type-safe event parsing for Discourse webhooks
+//! - HMAC-SHA256 signature verification
+//! - Trait-based event handling system
+//! - Support for all major Discourse webhook events
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use discourse_webhooks::{WebhookEventHandler, WebhookProcessor, TopicWebhookEvent};
+//!
+//! struct MyHandler;
+//!
+//! impl WebhookEventHandler for MyHandler {
+//!     type Error = String;
+//!
+//!     fn handle_topic_created(&mut self, event: &TopicWebhookEvent) -> Result<(), Self::Error> {
+//!         println!("New topic: {}", event.topic.title);
+//!         Ok(())
+//!     }
+//! }
+//!
+//! // Process webhook events
+//! let processor = WebhookProcessor::new();
+//! let mut handler = MyHandler;
+//! // processor.process_json(&mut handler, "topic_created", payload, None)?;
+//! ```
+
 pub mod error;
 pub mod events;
 pub mod signature;
@@ -11,6 +43,7 @@ pub use signature::{verify_json_signature, verify_signature, SignatureVerificati
 
 use serde::{Deserialize, Serialize};
 
+/// Represents a Discourse webhook payload structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DiscourseWebhookPayload {
     /// The event type (e.g., "topic_created", "post_edited")
@@ -24,9 +57,16 @@ pub struct DiscourseWebhookPayload {
     pub timestamp: Option<i64>,
 }
 
+/// Trait for handling different types of webhook events
+///
+/// Implement this trait to define custom behavior for each event type.
+/// All methods have default implementations that do nothing, so you only
+/// need to implement the events you care about.
 pub trait WebhookEventHandler {
+    /// The error type returned by event handlers
     type Error;
 
+    /// Called when a new topic is created
     fn handle_topic_created(
         &mut self,
         event: &TopicWebhookEvent,
@@ -35,6 +75,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a topic is edited
     fn handle_topic_edited(
         &mut self,
         event: &TopicWebhookEvent,
@@ -43,6 +84,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a topic is deleted/destroyed
     fn handle_topic_destroyed(
         &mut self,
         event: &TopicWebhookEvent,
@@ -51,6 +93,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a deleted topic is recovered
     fn handle_topic_recovered(
         &mut self,
         event: &TopicWebhookEvent,
@@ -59,6 +102,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a new post is created
     fn handle_post_created(
         &mut self,
         event: &PostWebhookEvent,
@@ -67,6 +111,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a post is edited
     fn handle_post_edited(
         &mut self,
         event: &PostWebhookEvent,
@@ -75,6 +120,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a post is deleted/destroyed
     fn handle_post_destroyed(
         &mut self,
         event: &PostWebhookEvent,
@@ -83,6 +129,7 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a deleted post is recovered
     fn handle_post_recovered(
         &mut self,
         event: &PostWebhookEvent,
@@ -91,95 +138,55 @@ pub trait WebhookEventHandler {
         Ok(())
     }
 
+    /// Called when a ping event is received
     fn handle_ping(&mut self) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
 }
 
+/// Process a webhook event using the provided handler
+///
+/// This function parses the payload based on the event type and calls
+/// the appropriate handler method.
+///
+/// # Arguments
+/// * `handler` - Mutable reference to an event handler
+/// * `event_type` - The type of event (e.g., "topic_created")
+/// * `payload` - The JSON payload from the webhook
+///
+/// # Returns
+/// * `Ok(())` if the event was processed successfully
+/// * `Err(WebhookError)` if parsing or handling failed
 pub fn process_webhook_event<H: WebhookEventHandler>(
     handler: &mut H,
     event_type: &str,
     payload: serde_json::Value,
 ) -> std::result::Result<(), WebhookError<H::Error>> {
     match event_type {
-        "topic_created" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
+        "topic_created" | "topic_edited" | "topic_destroyed" | "topic_recovered" => {
+            let event = parse_webhook_payload(event_type, payload)?;
             if let WebhookEventPayload::TopicEvent(topic_event) = event {
-                handler
-                    .handle_topic_created(&topic_event)
-                    .map_err(WebhookError::HandlerError)?;
+                match event_type {
+                    "topic_created" => handler.handle_topic_created(&topic_event),
+                    "topic_edited" => handler.handle_topic_edited(&topic_event),
+                    "topic_destroyed" => handler.handle_topic_destroyed(&topic_event),
+                    "topic_recovered" => handler.handle_topic_recovered(&topic_event),
+                    _ => unreachable!(),
+                }
+                .map_err(WebhookError::HandlerError)?;
             }
         }
-        "topic_edited" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
-            if let WebhookEventPayload::TopicEvent(topic_event) = event {
-                handler
-                    .handle_topic_edited(&topic_event)
-                    .map_err(WebhookError::HandlerError)?;
-            }
-        }
-        "topic_destroyed" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
-            if let WebhookEventPayload::TopicEvent(topic_event) = event {
-                handler
-                    .handle_topic_destroyed(&topic_event)
-                    .map_err(WebhookError::HandlerError)?;
-            }
-        }
-        "topic_recovered" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
-            if let WebhookEventPayload::TopicEvent(topic_event) = event {
-                handler
-                    .handle_topic_recovered(&topic_event)
-                    .map_err(WebhookError::HandlerError)?;
-            }
-        }
-        "post_created" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
+        "post_created" | "post_edited" | "post_destroyed" | "post_recovered" => {
+            let event = parse_webhook_payload(event_type, payload)?;
             if let WebhookEventPayload::PostEvent(post_event) = event {
-                handler
-                    .handle_post_created(&post_event)
-                    .map_err(WebhookError::HandlerError)?;
-            }
-        }
-        "post_edited" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
-            if let WebhookEventPayload::PostEvent(post_event) = event {
-                handler
-                    .handle_post_edited(&post_event)
-                    .map_err(WebhookError::HandlerError)?;
-            }
-        }
-        "post_destroyed" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
-            if let WebhookEventPayload::PostEvent(post_event) = event {
-                handler
-                    .handle_post_destroyed(&post_event)
-                    .map_err(WebhookError::HandlerError)?;
-            }
-        }
-        "post_recovered" => {
-            let event =
-                parse_webhook_payload(event_type, payload).map_err(WebhookError::ParseError)?;
-
-            if let WebhookEventPayload::PostEvent(post_event) = event {
-                handler
-                    .handle_post_recovered(&post_event)
-                    .map_err(WebhookError::HandlerError)?;
+                match event_type {
+                    "post_created" => handler.handle_post_created(&post_event),
+                    "post_edited" => handler.handle_post_edited(&post_event),
+                    "post_destroyed" => handler.handle_post_destroyed(&post_event),
+                    "post_recovered" => handler.handle_post_recovered(&post_event),
+                    _ => unreachable!(),
+                }
+                .map_err(WebhookError::HandlerError)?;
             }
         }
         "ping" => {
@@ -193,6 +200,23 @@ pub fn process_webhook_event<H: WebhookEventHandler>(
     Ok(())
 }
 
+/// A webhook processor that handles signature verification and event dispatching
+///
+/// This struct provides a convenient way to process webhook events with
+/// optional signature verification.
+///
+/// # Examples
+///
+/// ```rust
+/// use discourse_webhooks::WebhookProcessor;
+///
+/// // Without signature verification
+/// let processor = WebhookProcessor::new();
+///
+/// // With signature verification
+/// let processor = WebhookProcessor::new()
+///     .with_secret("your_webhook_secret");
+/// ```
 #[derive(Debug, Clone)]
 pub struct WebhookProcessor {
     secret: Option<String>,
@@ -200,6 +224,9 @@ pub struct WebhookProcessor {
 }
 
 impl WebhookProcessor {
+    /// Create a new webhook processor with default settings
+    ///
+    /// By default, signature verification is disabled.
     pub fn new() -> Self {
         Self {
             secret: None,
@@ -207,17 +234,42 @@ impl WebhookProcessor {
         }
     }
 
+    /// Enable signature verification with the provided secret
+    ///
+    /// # Arguments
+    /// * `secret` - The shared secret key for HMAC verification
     pub fn with_secret<S: Into<String>>(mut self, secret: S) -> Self {
         self.secret = Some(secret.into());
         self.verify_signatures = true;
         self
     }
 
+    /// Disable signature verification
+    ///
+    /// This can be useful for development or when webhooks are received
+    /// through a trusted channel.
     pub fn without_signature_verification(mut self) -> Self {
         self.verify_signatures = false;
         self
     }
 
+    /// Check if signature verification is enabled
+    pub fn verifies_signatures(&self) -> bool {
+        self.verify_signatures
+    }
+
+    /// Get the configured secret (if any)
+    pub fn secret(&self) -> Option<&str> {
+        self.secret.as_deref()
+    }
+
+    /// Process a webhook from a string payload
+    ///
+    /// # Arguments
+    /// * `handler` - Mutable reference to an event handler
+    /// * `event_type` - The type of event (e.g., "topic_created")
+    /// * `payload` - The raw JSON payload as a string
+    /// * `signature` - Optional signature header for verification
     pub fn process<H: WebhookEventHandler>(
         &self,
         handler: &mut H,
@@ -240,6 +292,13 @@ impl WebhookProcessor {
         process_webhook_event(handler, event_type, json_payload)
     }
 
+    /// Process a webhook from a JSON value
+    ///
+    /// # Arguments
+    /// * `handler` - Mutable reference to an event handler
+    /// * `event_type` - The type of event (e.g., "topic_created")
+    /// * `payload` - The JSON payload as a serde_json::Value
+    /// * `signature` - Optional signature header for verification
     pub fn process_json<H: WebhookEventHandler>(
         &self,
         handler: &mut H,
