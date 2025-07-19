@@ -1,17 +1,20 @@
+use discourse_webhooks::async_trait;
 use discourse_webhooks::{PostWebhookEvent, WebhookEventHandler, WebhookProcessor};
 
 struct MyHandler;
 
+#[async_trait]
 impl WebhookEventHandler for MyHandler {
     type Error = String;
 
-    fn handle_post_created(&mut self, event: &PostWebhookEvent) -> Result<(), Self::Error> {
+    async fn handle_post_created(&mut self, event: &PostWebhookEvent) -> Result<(), Self::Error> {
         println!("New post by {}: {}", event.post.username, event.post.raw);
         Ok(())
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let processor = WebhookProcessor::new();
     let mut handler = MyHandler;
 
@@ -66,7 +69,10 @@ fn main() {
         }
     }"#;
 
-    if let Err(e) = processor.process(&mut handler, "post_created", payload_str, None) {
+    if let Err(e) = processor
+        .process(&mut handler, "post_created", payload_str, None)
+        .await
+    {
         eprintln!("Error processing webhook: {:?}", e);
     }
 }

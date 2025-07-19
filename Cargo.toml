@@ -1,6 +1,6 @@
 [package]
 name = "discourse-webhooks"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Type-safe Rust library for handling Discourse webhook events"
 license = "MIT"
@@ -20,7 +20,18 @@ path = "examples/basic.rs"
 name = "advanced"
 path = "examples/advanced.rs"
 
+[[example]]
+name = "basic_async"
+path = "examples/basic_async.rs"
+required-features = ["async"]
+
+[[example]]
+name = "advanced_async"
+path = "examples/advanced_async.rs"
+required-features = ["async"]
+
 [dependencies]
+async-trait = { version = "0.1", optional = true }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -30,7 +41,9 @@ sha2 = "0.10"
 hex = "0.4"
 
 [dev-dependencies]
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 tokio-test = "0.4"
 
 [features]
 default = []
+async = ["async-trait"]

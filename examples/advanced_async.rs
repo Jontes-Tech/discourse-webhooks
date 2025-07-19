@@ -1,13 +1,15 @@
+use discourse_webhooks::async_trait;
 use discourse_webhooks::{
     PostWebhookEvent, TopicWebhookEvent, WebhookError, WebhookEventHandler, WebhookProcessor,
 };
 
 struct LoggingHandler;
 
+#[async_trait]
 impl WebhookEventHandler for LoggingHandler {
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
-    fn handle_topic_created(&mut self, event: &TopicWebhookEvent) -> Result<(), Self::Error> {
+    async fn handle_topic_created(&mut self, event: &TopicWebhookEvent) -> Result<(), Self::Error> {
         println!("📝 Topic Created:");
         println!("   Title: {}", event.topic.title);
         println!("   Author: {}", event.topic.created_by.username);
@@ -17,7 +19,7 @@ impl WebhookEventHandler for LoggingHandler {
         Ok(())
     }
 
-    fn handle_topic_edited(&mut self, event: &TopicWebhookEvent) -> Result<(), Self::Error> {
+    async fn handle_topic_edited(&mut self, event: &TopicWebhookEvent) -> Result<(), Self::Error> {
         println!("✏️  Topic Edited:");
         println!("   Title: {}", event.topic.title);
         println!("   Slug: {}", event.topic.slug);
@@ -25,14 +27,17 @@ impl WebhookEventHandler for LoggingHandler {
         Ok(())
     }
 
-    fn handle_topic_destroyed(&mut self, event: &TopicWebhookEvent) -> Result<(), Self::Error> {
+    async fn handle_topic_destroyed(
+        &mut self,
+        event: &TopicWebhookEvent,
+    ) -> Result<(), Self::Error> {
         println!("🗑️  Topic Destroyed:");
         println!("   Title: {}", event.topic.title);
         println!();
         Ok(())
     }
 
-    fn handle_post_created(&mut self, event: &PostWebhookEvent) -> Result<(), Self::Error> {
+    async fn handle_post_created(&mut self, event: &PostWebhookEvent) -> Result<(), Self::Error> {
         println!("💬 Post Created:");
         println!("   Author: {}", event.post.username);
         println!("   Topic: {}", event.post.topic_title);
@@ -41,7 +46,7 @@ impl WebhookEventHandler for LoggingHandler {
         Ok(())
     }
 
-    fn handle_post_edited(&mut self, event: &PostWebhookEvent) -> Result<(), Self::Error> {
+    async fn handle_post_edited(&mut self, event: &PostWebhookEvent) -> Result<(), Self::Error> {
         println!("📝 Post Edited:");
         println!("   Author: {}", event.post.username);
         println!("   Topic: {}", event.post.topic_title);
@@ -50,13 +55,14 @@ impl WebhookEventHandler for LoggingHandler {
         Ok(())
     }
 
-    fn handle_ping(&mut self) -> Result<(), Self::Error> {
+    async fn handle_ping(&mut self) -> Result<(), Self::Error> {
         println!("🏓 Received ping from Discourse");
         Ok(())
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use hex;
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
@@ -120,6 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let processor = WebhookProcessor::new().with_secret(webhook_secret);
 
+    // Generate HMAC signature
     let signature = {
         let mut mac = Hmac::<Sha256>::new_from_slice(webhook_secret.as_bytes())?;
         mac.update(payload_str.as_bytes());
@@ -127,7 +134,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!("Processing webhook with signature verification...");
-    match processor.process(&mut handler, "post_created", &payload_str, Some(&signature)) {
+    match processor
+        .process(&mut handler, "post_created", &payload_str, Some(&signature))
+        .await
+    {
         Ok(_) => println!("✅ Webhook processed successfully!"),
         Err(WebhookError::InvalidSignature) => {
             println!("❌ Invalid webhook signature!");
@@ -140,7 +150,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nProcessing without signature verification...");
     let simple_processor = WebhookProcessor::new().without_signature_verification();
 
-    simple_processor.process(&mut handler, "ping", "{}", None)?;
+    simple_processor
+        .process(&mut handler, "ping", "{}", None)
+        .await?;
 
     Ok(())
 }
